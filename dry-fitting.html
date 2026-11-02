@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dry Fitting 기울기 계산기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: 입력 패널(좌) + 그래프·판정(우), 폭이 좁으면 1열 */
+:root{
+  --bg:#f3f5f6; --panel:#ffffff; --fg:#17212b; --muted:#5d6b78; --line:#d5dde3;
+  --grid:#e6ebef; --accent:#0b5e8e; --accent-soft:#dcebf4; --fit:#c2410c; --ref:#7a6a9c;
+  --ok:#1f7a4a; --ok-bg:#e1f2e8; --warn:#9a6700; --warn-bg:#fbf0d3; --bad:#b42318; --bad-bg:#fbe3e1;
+  --sans:"IBM Plex Sans KR",system-ui,-apple-system,"Malgun Gothic",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#10161c; --panel:#18212a; --fg:#e4eaef; --muted:#93a1ad; --line:#2c3843;
+  --grid:#222d37; --accent:#5fb0e3; --accent-soft:#1c3446; --fit:#f08a52; --ref:#b3a3d6;
+  --ok:#5cc98d; --ok-bg:#163326; --warn:#e6b84a; --warn-bg:#3a2f12; --bad:#f2786d; --bad-bg:#3d1b18; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#10161c; --panel:#18212a; --fg:#e4eaef; --muted:#93a1ad; --line:#2c3843;
+  --grid:#222d37; --accent:#5fb0e3; --accent-soft:#1c3446; --fit:#f08a52; --ref:#b3a3d6;
+  --ok:#5cc98d; --ok-bg:#163326; --warn:#e6b84a; --warn-bg:#3a2f12; --bad:#f2786d; --bad-bg:#3d1b18; color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.5;
+  padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:8px 16px;border-bottom:2px solid var(--fg);padding-bottom:10px}
+h1{font-size:22px;margin:0;text-wrap:balance;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:13px}
+.grid{display:grid;grid-template-columns:minmax(0,400px) minmax(0,1fr);gap:16px}
+@media (max-width:880px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0}
+h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0;font-weight:600}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+input,select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:7px 9px;width:100%;min-width:0}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+input.num{font-family:var(--mono);text-align:right}
+.tbl{max-height:460px;overflow:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th{font-size:11px;color:var(--muted);font-weight:500;text-align:right;padding:4px 6px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
+th:first-child{text-align:left}
+td{padding:3px 4px;border-bottom:1px solid var(--grid)}
+td.idx{font-family:var(--mono);color:var(--muted);width:24px}
+td.dist{font-family:var(--mono);text-align:right;font-weight:600;width:64px}
+td.m{font-family:var(--mono);text-align:right;font-size:12px;width:62px;color:var(--muted)}
+td.del{width:26px;text-align:center}
+.btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button{font:inherit;font-size:13px;cursor:pointer;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:4px;padding:7px 12px}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--panel);font-weight:600}
+button.x{border:none;background:none;color:var(--muted);padding:2px 6px;font-size:16px;line-height:1}
+button:hover{border-color:var(--accent)}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media (max-width:560px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{border:1px solid var(--line);border-radius:4px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.kpi .k{font-size:11px;color:var(--muted)}
+.kpi .v{font-family:var(--mono);font-size:20px;font-weight:600;overflow-wrap:anywhere}
+.kpi .u{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.kpi.main{background:var(--accent-soft);border-color:var(--accent)}
+.kpi.main .v{color:var(--accent)}
+.chartbox{overflow-x:auto}
+svg text{font-family:var(--mono);font-size:11px}
+.verdict{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 12px;border-radius:4px;border:1px solid var(--line)}
+.pill{font-size:12px;font-weight:700;padding:2px 10px;border-radius:99px}
+.pill.ok{background:var(--ok-bg);color:var(--ok)} .pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.bad{background:var(--bad-bg);color:var(--bad)}
+.vtext{font-size:13px;color:var(--muted);flex:1;min-width:200px}
+.cross table td{font-family:var(--mono);text-align:right;padding:6px}
+.cross table td:first-child{text-align:left;color:var(--ref);font-weight:600}
+.note{font-size:12px;color:var(--muted);margin:0}
+.ex{font-size:11px;color:var(--warn);background:var(--warn-bg);padding:1px 8px;border-radius:99px}
+.toast{font-size:12px;color:var(--ok)}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Dry Fitting 기울기 계산기</h1>
+      <div class="sub">Propeller / Rudder stock 유압 Push-up · 0.5 mm 이동마다 출력 압력을 기록해 기울기 확인</div>
+    </div>
+    <span class="ex" id="exTag">예시 데이터</span>
+  </header>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>검사 정보</h2>
+      <div class="fields">
+        <label>호선 (HN)<input id="hn" placeholder="예: 2678"></label>
+        <label>대상
+          <select id="target"><option>Propeller</option><option>Rudder stock</option><option>기타</option></select>
+        </label>
+        <label>검사일<input id="date" type="date"></label>
+        <label>점검자<input id="who"></label>
+        <label>이동거리 간격 (mm)<input id="step" class="num" inputmode="decimal" value="0.5"></label>
+        <label>기준 압력 (kgf/cm², 쉼표)<input id="refP" class="num" value="30,60,90,120"></label>
+      </div>
+
+      <h2>측정값 · 거리별 출력 압력</h2>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>#</th><th>거리 mm</th><th>압력 kgf/cm²</th><th>구간 kgf/cm²/mm</th><th>편차 kgf/cm²</th><th></th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="btns">
+        <button id="addRow">다음 거리 추가</button>
+        <button id="clear">압력 지우기</button>
+      </div>
+
+      <h2>판정 기준 (선택)</h2>
+      <div class="fields">
+        <label>기준 기울기 (kgf/cm²/mm)<input id="refSlope" class="num" inputmode="decimal" placeholder="미입력 시 생략"></label>
+        <label>허용 편차 (%)<input id="refTol" class="num" inputmode="decimal" value="10"></label>
+        <label>R² 최소값<input id="r2min" class="num" inputmode="decimal" value="0.995"></label>
+        <label>점 편차 허용 (kgf/cm²)<input id="devMax" class="num" inputmode="decimal" value="3"></label>
+      </div>
+      <p class="note">기준 기울기는 제작사 Push-up 계산서나 이전 Dry fitting 값을 넣으세요. 입력값은 이 브라우저에만 저장됩니다.</p>
+    </section>
+
+    <section class="panel">
+      <h2>결과</h2>
+      <div class="kpis">
+        <div class="kpi main"><span class="k">기울기</span><span class="v" id="kSlope">–</span><span class="u">kgf/cm²/mm</span></div>
+        <div class="kpi"><span class="k">0.5 mm당 압력</span><span class="v" id="kStep">–</span><span class="u">kgf/cm²</span></div>
+        <div class="kpi"><span class="k">0 kgf/cm² 교점 (시작점)</span><span class="v" id="kX0">–</span><span class="u">mm</span></div>
+        <div class="kpi"><span class="k">직선성 R²</span><span class="v" id="kR2">–</span><span class="u">회귀 결정계수</span></div>
+      </div>
+
+      <div class="verdict" id="verdict"></div>
+
+      <div class="chartbox"><svg id="chart" viewBox="0 0 720 420" width="100%" role="img" aria-label="이동거리-압력 그래프"></svg></div>
+
+      <div class="cross">
+        <h2>기준 압력 도달 거리</h2>
+        <table><thead><tr><th style="text-align:left">압력</th><th>측정 보간 (mm)</th><th>회귀직선 (mm)</th><th>시작점 보정 (mm)</th></tr></thead>
+        <tbody id="cross"></tbody></table>
+      </div>
+
+      <div class="btns">
+        <button class="primary" id="copy">결과 복사</button>
+        <span class="toast" id="toast"></span>
+      </div>
+      <p class="note">기울기는 최소제곱 직선(압력 = 기울기 × 거리 + 절편)입니다. 구간 기울기는 바로 앞 점과의 ΔP/Δd, 편차는 측정 압력과 직선값의 차이입니다. 시작점 보정 거리는 회귀 거리에서 0 kgf/cm² 교점을 뺀 값입니다.</p>
+    </section>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const KEY='dryfit-kgf-v1';
+const SAMPLE={press:[12,27,43,58,74,89,105,121],step:'0.5',refP:'30,60,90,120',hn:'',target:'Propeller',date:'',who:''};
+let state;
+try{state=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+let isSample=!state;
+if(!state)state=JSON.parse(JSON.stringify(SAMPLE));
+
+function save(){try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}}
+const num=v=>{const n=parseFloat(String(v??'').replace(',','.'));return isFinite(n)?n:null};
+const f=(n,d)=>n==null||!isFinite(n)?'–':n.toFixed(d);
+const stepV=()=>{const s=num(state.step);return s&&s>0?s:0.5};
+const dist=i=>+((i+1)*stepV()).toFixed(4);
+
+function renderRows(){
+  const tb=$('rows');tb.innerHTML='';
+  state.press.forEach((p,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td class="idx">${i+1}</td><td class="dist">${dist(i).toFixed(2)}</td>
+      <td><input class="num" id="p${i}" inputmode="decimal" value="${p??''}"></td>
+      <td class="m" id="seg${i}">–</td><td class="m" id="dev${i}">–</td>
+      <td class="del"><button class="x" aria-label="행 삭제" data-i="${i}">×</button></td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('input').forEach(inp=>{
+    inp.addEventListener('input',e=>{state.press[+e.target.id.slice(1)]=e.target.value;touched()});
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter'){const i=+e.target.id.slice(1);
+      if(i===state.press.length-1){state.press.push('');touched();renderRows();calc()}
+      const n=$('p'+(i+1));if(n)n.focus()}});
+  });
+  tb.querySelectorAll('button.x').forEach(b=>b.addEventListener('click',()=>{state.press.splice(+b.dataset.i,1);touched();renderRows();calc()}));
+}
+function touched(){if(isSample){isSample=false;$('exTag').hidden=true}save();calc()}
+
+function regress(pts){
+  const n=pts.length;if(n<2)return null;
+  let sx=0,sy=0,sxx=0,sxy=0;
+  pts.forEach(([x,y])=>{sx+=x;sy+=y;sxx+=x*x;sxy+=x*y});
+  const den=n*sxx-sx*sx;if(Math.abs(den)<1e-12)return null;
+  const m=(n*sxy-sx*sy)/den,b=(sy-m*sx)/n,my=sy/n;let ssr=0,sst=0;
+  pts.forEach(([x,y])=>{ssr+=(y-(m*x+b))**2;sst+=(y-my)**2});
+  return{m,b,r2:sst>0?1-ssr/sst:1,x0:-b/m};
+}
+function refList(){return String(state.refP||'').split(/[,\s]+/).map(num).filter(v=>v!=null&&v>0)}
+function interp(pts,P){for(let k=1;k<pts.length;k++){const[a,pa]=pts[k-1],[b,pb]=pts[k];
+  if((pa<=P&&pb>=P)&&pb!==pa)return a+(P-pa)/(pb-pa)*(b-a)}return null}
+
+let last=null;
+function calc(){
+  const pts=[];state.press.forEach((p,i)=>{const v=num(p);if(v!=null)pts.push([dist(i),v,i])});
+  const R=regress(pts.map(p=>[p[0],p[1]]));
+  const devMax=num($('devMax').value);let maxDev=0,monotonic=true;
+  state.press.forEach((_,i)=>{['seg','dev'].forEach(k=>{const c=$(k+i);if(c){c.textContent='–';c.style.color=''}})});
+  pts.forEach(([d,p,i],k)=>{
+    if(k>0){const[d0,p0]=pts[k-1];$('seg'+i).textContent=((p-p0)/(d-d0)).toFixed(1);if(p<=p0)monotonic=false}
+    if(R){const dev=p-(R.m*d+R.b);maxDev=Math.max(maxDev,Math.abs(dev));
+      const c=$('dev'+i);c.textContent=(dev>=0?'+':'')+dev.toFixed(1);
+      if(devMax!=null&&Math.abs(dev)>devMax)c.style.color='var(--bad)'}
+  });
+  $('kSlope').textContent=R?f(R.m,1):'–';
+  $('kStep').textContent=R?f(R.m*stepV(),1):'–';
+  $('kX0').textContent=R?f(R.x0,3):'–';
+  $('kR2').textContent=R?f(R.r2,5):'–';
+  document.querySelector('.kpi:nth-child(2) .k').textContent=`${stepV()} mm당 압력`;
+  const refs=refList();
+  $('cross').innerHTML=refs.map(P=>{const mi=interp(pts,P),rr=R?(P-R.b)/R.m:null;
+    return `<tr><td>${P} kgf/cm²</td><td>${f(mi,3)}</td><td>${f(rr,3)}</td><td>${R?f(rr-R.x0,3):'–'}</td></tr>`}).join('');
+  last={R,pts,maxDev,monotonic,refs};verdict();draw();
+}
+
+function verdict(){
+  const v=$('verdict'),{R,pts,maxDev,monotonic,refs}=last;
+  if(!R){v.innerHTML='<span class="pill warn">입력 필요</span><span class="vtext">거리별 압력을 2점 이상 입력하세요.</span>';last.label='입력 필요';last.msgs=[];return}
+  const msgs=[];let lvl='ok';
+  const r2min=num($('r2min').value),devMax=num($('devMax').value),ref=num($('refSlope').value),tol=num($('refTol').value);
+  if(!monotonic){lvl='bad';msgs.push('거리가 늘었는데 압력이 같거나 떨어진 구간이 있습니다.')}
+  if(r2min!=null&&R.r2<r2min){lvl='bad';msgs.push(`R² ${R.r2.toFixed(4)} < 기준 ${r2min}. 직선성이 부족합니다.`)}
+  if(devMax!=null&&maxDev>devMax){if(lvl!=='bad')lvl='warn';msgs.push(`최대 점 편차 ${maxDev.toFixed(1)} kgf/cm²가 허용 ${devMax} kgf/cm²를 넘습니다.`)}
+  if(ref!=null&&ref>0&&tol!=null){const diff=(R.m-ref)/ref*100;
+    if(Math.abs(diff)>tol){if(lvl!=='bad')lvl='warn';msgs.push(`기울기가 기준 대비 ${diff>0?'+':''}${diff.toFixed(1)}% (허용 ±${tol}%).`)}
+    else msgs.push(`기울기가 기준 대비 ${diff>0?'+':''}${diff.toFixed(1)}%로 허용 범위 안입니다.`)}
+  if(R.m<=0){lvl='bad';msgs.push('기울기가 0 이하입니다.')}
+  const maxP=Math.max(...pts.map(p=>p[1]));const top=refs.length?Math.max(...refs):null;
+  if(top!=null&&maxP<top){if(lvl==='ok')lvl='warn';msgs.push(`최고 압력 ${maxP} kgf/cm²로 ${top} kgf/cm²까지 측정되지 않았습니다.`)}
+  if(lvl==='ok'&&!msgs.length)msgs.push('직선성 양호. 기준 기울기를 넣으면 비교 판정도 표시합니다.');
+  const label={ok:'양호',warn:'확인 필요',bad:'불량'}[lvl];
+  v.innerHTML=`<span class="pill ${lvl}">${label}</span><span class="vtext">${msgs.join(' ')}</span>`;
+  last.label=label;last.msgs=msgs;
+}
+
+function nice(span,steps){const raw=span/steps,p=10**Math.floor(Math.log10(raw)),n=raw/p;
+  return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p}
+
+function draw(){
+  const svg=$('chart'),{R,pts,refs}=last;
+  const W=720,H=420,L=62,Rt=28,T=20,B=52,pw=W-L-Rt,ph=H-T-B;
+  const xMaxD=Math.max(stepV()*2,...pts.map(p=>p[0]));
+  const yMaxD=Math.max(10,...pts.map(p=>p[1]),...refs);
+  let xMin=0;if(R&&R.x0<0)xMin=R.x0;
+  const xs=nice((xMaxD-xMin)*1.08,10),ys=nice(yMaxD*1.08,7);
+  xMin=xMin<0?-Math.ceil(-xMin/xs)*xs:0;const xTop=Math.ceil(xMaxD*1.08/xs)*xs,yTop=Math.ceil(yMaxD*1.08/ys)*ys;
+  const X=v=>L+(v-xMin)/(xTop-xMin)*pw,Y=v=>T+ph-(v/yTop)*ph;
+  const dec=xs<0.1?2:xs<1?1:0;let s='';
+  for(let v=xMin;v<=xTop+1e-9;v+=xs)s+=`<line x1="${X(v)}" y1="${T}" x2="${X(v)}" y2="${T+ph}" stroke="var(--grid)"/><text x="${X(v)}" y="${T+ph+16}" text-anchor="middle" fill="var(--muted)">${v.toFixed(dec)}</text>`;
+  for(let v=0;v<=yTop+1e-9;v+=ys)s+=`<line x1="${L}" y1="${Y(v)}" x2="${L+pw}" y2="${Y(v)}" stroke="var(--grid)"/><text x="${L-8}" y="${Y(v)+4}" text-anchor="end" fill="var(--muted)">${+v.toFixed(1)}</text>`;
+  refs.forEach(P=>{s+=`<line x1="${L}" y1="${Y(P)}" x2="${L+pw}" y2="${Y(P)}" stroke="var(--ref)" stroke-dasharray="2 4"/><text x="${L+4}" y="${Y(P)-4}" fill="var(--ref)">${P} kgf/cm²</text>`;
+    if(R){const d=(P-R.b)/R.m;if(d>=xMin&&d<=xTop)s+=`<line x1="${X(d)}" y1="${Y(P)}" x2="${X(d)}" y2="${T+ph}" stroke="var(--ref)" stroke-dasharray="2 4"/>`}});
+  s+=`<line x1="${L}" y1="${T+ph}" x2="${L+pw}" y2="${T+ph}" stroke="var(--fg)"/><line x1="${L}" y1="${T}" x2="${L}" y2="${T+ph}" stroke="var(--fg)"/>`;
+  s+=`<text x="${L+pw/2}" y="${H-10}" text-anchor="middle" fill="var(--fg)">이동거리 (mm)</text>`;
+  s+=`<text transform="translate(16 ${T+ph/2}) rotate(-90)" text-anchor="middle" fill="var(--fg)">압력 (kgf/cm²)</text>`;
+  if(pts.length>1)s+=`<polyline points="${pts.map(p=>X(p[0])+','+Y(p[1])).join(' ')}" fill="none" stroke="var(--accent)" stroke-width="1.5" opacity=".5"/>`;
+  if(R){const yb=Math.min(R.m*xTop+R.b,yTop),xb=(yb-R.b)/R.m;
+    s+=`<line x1="${X(R.x0)}" y1="${Y(0)}" x2="${X(xb)}" y2="${Y(yb)}" stroke="var(--fit)" stroke-width="2" stroke-dasharray="6 4"/>`;
+    s+=`<circle cx="${X(R.x0)}" cy="${Y(0)}" r="5" fill="var(--panel)" stroke="var(--fit)" stroke-width="2"/>`;
+    s+=`<text x="${X(R.x0)+8}" y="${Y(0)-8}" fill="var(--fit)">${R.x0.toFixed(3)} mm</text>`;
+    s+=`<text x="${L+pw-8}" y="${T+ph-12}" text-anchor="end" fill="var(--fit)">P = ${R.m.toFixed(1)}·d ${R.b>=0?'+':'−'} ${Math.abs(R.b).toFixed(1)}   R² ${R.r2.toFixed(4)}</text>`}
+  pts.forEach(([d,p])=>{s+=`<circle cx="${X(d)}" cy="${Y(p)}" r="4.5" fill="var(--accent)"/>`});
+  svg.innerHTML=s;
+}
+
+function bindMeta(){
+  ['hn','target','date','who'].forEach(k=>{$(k).value=state[k]||'';$(k).addEventListener('input',e=>{state[k]=e.target.value;save()})});
+  ['step','refP'].forEach(k=>{$(k).value=state[k]??$(k).value;$(k).addEventListener('input',e=>{state[k]=e.target.value;save();renderRows();calc()})});
+  ['refSlope','refTol','r2min','devMax'].forEach(k=>{if(state[k]!=null)$(k).value=state[k];$(k).addEventListener('input',e=>{state[k]=e.target.value;save();calc()})});
+}
+$('addRow').onclick=()=>{state.press.push('');touched();renderRows();calc();$('p'+(state.press.length-1)).focus()};
+$('clear').onclick=()=>{state.press=state.press.map(()=>'');touched();renderRows();calc()};
+$('copy').onclick=async()=>{
+  const {R,pts,refs}=last;if(!R)return;
+  const t=[`[Dry Fitting] HN ${state.hn||'-'} / ${state.target} / ${state.date||'-'} / ${state.who||'-'}`,
+    ...pts.map(([d,p])=>`${d.toFixed(2)} mm : ${p} kgf/cm²`),
+    `기울기 ${R.m.toFixed(1)} kgf/cm²/mm (${stepV()} mm당 ${(R.m*stepV()).toFixed(1)} kgf/cm²)`,
+    `0 kgf/cm² 교점 ${R.x0.toFixed(3)} mm, R² ${R.r2.toFixed(5)}`,
+    ...refs.map(P=>`${P} kgf/cm² 도달: ${((P-R.b)/R.m).toFixed(3)} mm`),
+    `판정: ${last.label} - ${last.msgs.join(' ')}`].join('\n');
+  try{await navigator.clipboard.writeText(t);$('toast').textContent='복사했습니다'}
+  catch(e){$('toast').textContent='복사가 막혀 있습니다. 결과를 직접 선택하세요.'}
+  setTimeout(()=>$('toast').textContent='',2500);
+};
+$('exTag').hidden=!isSample;
+bindMeta();renderRows();calc();
+</script>
+</body>
+</html>
